@@ -72,7 +72,7 @@ First, we'll adjust network access control lists (NACLs) to deny traffic to us-e
 
 To get started, find the public IP addresses used by the ALB in us-east-1 by running:
 
-aws ec2 describe-network-interfaces --filters Name=description,Values="ELB app/Ticta-TicTa*" --region us-east-1 | jq ".NetworkInterfaces[].Association.PublicIp"
+    aws ec2 describe-network-interfaces --filters Name=description,Values="ELB app/Ticta-TicTa*" --region us-east-1 | jq ".NetworkInterfaces[].Association.PublicIp"
 
 You should see two IP addresses listed there.  Next we'll add a NACL rule to deny traffic to these IP addresses from our client.
 
