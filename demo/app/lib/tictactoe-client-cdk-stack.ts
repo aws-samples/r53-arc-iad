@@ -16,13 +16,13 @@ export class TictactoeClientCdkStack extends Stack {
     const vpc = new ec2.Vpc(this, 'TicTacToeVPC', {
       natGateways: 1, //default value but better to make it explicit
       maxAzs: 1,
-      cidr: '10.0.0.0/16',
+      ipAddresses: ec2.IpAddresses.cidr('10.0.0.0/16'),
       subnetConfiguration: [{
         subnetType: ec2.SubnetType.PUBLIC,
         name: 'igw',
         cidrMask: 24,
       }, {
-        subnetType: ec2.SubnetType.PRIVATE,
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
         name: 'bastion',
         cidrMask: 24
       } ]

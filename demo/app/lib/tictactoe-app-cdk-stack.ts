@@ -25,13 +25,13 @@ export class TictactoeAppCdkStack extends Stack {
     const vpc = new ec2.Vpc(this, 'TicTacToeVPC', {
       natGateways: 1, //default value but better to make it explicit
       maxAzs: 2,
-      cidr: '10.0.0.0/16',
+      ipAddresses: ec2.IpAddresses.cidr('10.0.0.0/16'),
       subnetConfiguration: [{
         subnetType: ec2.SubnetType.PUBLIC,
         name: 'load balancer',
         cidrMask: 24,
       }, {
-        subnetType: ec2.SubnetType.PRIVATE,
+        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
         name: 'application',
         cidrMask: 24
       }]
@@ -41,14 +41,16 @@ export class TictactoeAppCdkStack extends Stack {
      * Create the auto scaling group with EC2 
      * instances to deploy our app
      ********************************************/
-
-
+     
     //
     // define the IAM role that will allow the application EC2 instance to access our DynamoDB Table 
     //
     const dynamoDBRole = new iam.Role(this, 'TicTacToeRole', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com')
     });
+
+ 
+
     // allow the role to read / write on the table
     props?.table.grantReadWriteData(dynamoDBRole);
 
@@ -57,36 +59,43 @@ export class TictactoeAppCdkStack extends Stack {
     //
     const installAppUserdata = ec2.UserData.forLinux();
     installAppUserdata.addCommands(
+      'amazon-linux-extras install -y python3.8',
       'curl -O https://bootstrap.pypa.io/get-pip.py',
-      'python3 get-pip.py',
+      'python3.8 get-pip.py',
 
-      'wget https://github.com/sebsto/tictactoe-dynamodb/releases/download/v01/tictactoe-app.zip',
+      'wget https://github.com/sebsto/tictactoe-dynamodb/releases/download/v02/tictactoe-app.zip',
       'mkdir tictactoe-app && cd tictactoe-app',
 
       'unzip ../tictactoe-app.zip',
       '/usr/local/bin/pip install -r requirements.txt',
 
-      'USE_EC2_INSTANCE_METADATA=true python3 application.py --serverPort 8080'
+      'USE_EC2_INSTANCE_METADATA=true python3.8 application.py --serverPort 8080'
     );
-
+    
+    
+    const sg1 = new ec2.SecurityGroup(this, 'sg1', {
+      vpc: vpc,
+    });
+    
+   const launchTemplate = new ec2.LaunchTemplate(this, 'LaunchTemplate', {
+	   instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE4_GRAVITON, ec2.InstanceSize.MICRO),
+	   role: dynamoDBRole,
+	   // script to automatically install the app at boot time 
+	   userData: installAppUserdata,
+	   securityGroup: sg1,
+	   machineImage: new ec2.AmazonLinuxImage({
+	    cpuType: ec2.AmazonLinuxCpuType.ARM_64,
+	    generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2 })
+    });
+    
     const asg = new autoscaling.AutoScalingGroup(this, 'TicTacToeASG', {
       vpc,
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.BURSTABLE4_GRAVITON, ec2.InstanceSize.MICRO),
-
-      // get the latest Amazon Linux 2 image for ARM64 CPU
-      machineImage: new ec2.AmazonLinuxImage({
-        cpuType: ec2.AmazonLinuxCpuType.ARM_64,
-        generation: ec2.AmazonLinuxGeneration.AMAZON_LINUX_2 }
-      ), 
-
-      // role granting permission to read / write to DynamoDB table 
-      role: dynamoDBRole,
-
-      // script to automatically install the app at boot time 
-      userData: installAppUserdata,
 
       // for high availability 
       minCapacity: 2,
+
+      // Launch Template
+      launchTemplate: launchTemplate,
 
       // we trust the health check from the load balancer
       healthCheck: autoscaling.HealthCheck.elb( {
